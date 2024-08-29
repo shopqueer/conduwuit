@@ -17,6 +17,7 @@ pub mod presence;
 pub mod pusher;
 pub mod resolver;
 pub mod rooms;
+pub mod sso;
 pub mod sending;
 pub mod server_keys;
 pub mod transaction_ids;

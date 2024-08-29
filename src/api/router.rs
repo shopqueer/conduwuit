@@ -33,6 +33,12 @@ pub fn build(router: Router<State>, server: &Server) -> Router<State> {
 		.ruma_route(client::third_party_route)
 		.ruma_route(client::request_3pid_management_token_via_email_route)
 		.ruma_route(client::request_3pid_management_token_via_msisdn_route)
+		.ruma_route(client::get_sso_redirect_route)
+        .ruma_route(client::get_sso_redirect_with_provider_route)
+        // The specification will likely never introduce any endpoint for handling authorization callbacks.
+        // As a workaround, we use custom path that redirects the user to the default login handler.
+        .ruma_route(client::handle_callback_route)
+
 		.ruma_route(client::check_registration_token_validity)
 		.ruma_route(client::get_capabilities_route)
 		.ruma_route(client::get_pushrules_all_route)

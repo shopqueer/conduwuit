@@ -1,6 +1,8 @@
 use std::{
-	collections::BTreeMap,
+    borrow::Borrow,
+    collections::{BTreeMap, HashSet},
 	fmt,
+	hash::{Hash, Hasher},
 	net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 	path::PathBuf,
 };
@@ -10,13 +12,19 @@ use either::{
 	Either::{Left, Right},
 };
 use figment::providers::{Env, Format, Toml};
-pub use figment::{value::Value as FigmentValue, Figment};
+pub use figment::{value::Value as FigmentValue, Figment, Dict};
 use itertools::Itertools;
 use regex::RegexSet;
 use ruma::{
-	api::client::discovery::discover_support::ContactRole, OwnedRoomId, OwnedServerName, OwnedUserId, RoomVersionId,
+	api::client::discovery::discover_support::ContactRole, api::client::session::get_login_types::v3::IdentityProvider, 
+	OwnedRoomId, OwnedServerName, OwnedUserId, RoomVersionId,
 };
-use serde::{de::IgnoredAny, Deserialize};
+use serde::{
+    de::{self, IgnoredAny},
+    Deserialize, Deserializer, Serialize,
+};
+use mas_oidc_client::types::{client_credentials::ClientCredentials, scope::Scope};
+
 use url::Url;
 
 pub use self::check::check;
@@ -175,6 +183,8 @@ pub struct Config {
 	pub tracing_flame_output_path: String,
 	#[serde(default)]
 	pub proxy: ProxyConfig,
+	#[serde(default, deserialize_with = "deserialize_providers")]
+    pub idps: HashSet<IdpConfig>,
 	pub jwt_secret: Option<String>,
 	#[serde(default = "default_trusted_servers")]
 	pub trusted_servers: Vec<OwnedServerName>,
@@ -393,6 +403,27 @@ struct ListeningPort {
 struct ListeningAddr {
 	#[serde(with = "either::serde_untagged")]
 	addrs: Either<IpAddr, Vec<IpAddr>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct IdpConfig {
+    pub issuer: String,
+    #[serde(flatten)]
+    pub inner: IdentityProvider,
+    #[serde(deserialize_with = "deserialize_scopes")]
+    pub scopes: Scope,
+
+    pub client_id: String,
+    pub client_secret: String,
+    pub auth_method: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Template {
+    pub localpart: Option<String>,
+    pub displayname: Option<String>,
+    pub avatar_url: Option<String>,
+    pub email: Option<String>,
 }
 
 const DEPRECATED_KEYS: &[&str; 9] = &[
@@ -839,6 +870,49 @@ impl fmt::Display for Config {
 	}
 }
 
+impl Borrow<str> for IdpConfig {
+    fn borrow(&self) -> &str {
+        &self.inner.id
+    }
+}
+
+impl PartialEq for IdpConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.id == other.inner.id
+    }
+}
+
+impl Eq for IdpConfig {}
+
+impl Hash for IdpConfig {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.inner.id.hash(hasher)
+    }
+}
+
+impl Into<ClientCredentials> for IdpConfig {
+    fn into(self) -> ClientCredentials {
+        let IdpConfig {
+            client_id,
+            client_secret,
+            auth_method,
+            ..
+        } = self;
+
+        match &*auth_method {
+            "basic" => ClientCredentials::ClientSecretBasic {
+                client_id,
+                client_secret,
+            },
+            "post" => ClientCredentials::ClientSecretPost {
+                client_id,
+                client_secret,
+            },
+            _ => unimplemented!(),
+        }
+    }
+}
+
 fn true_fn() -> bool { true }
 
 fn default_address() -> ListeningAddr {
@@ -1050,3 +1124,46 @@ fn default_sentry_traces_sample_rate() -> f32 { 0.15 }
 fn default_sentry_filter() -> String { "info".to_owned() }
 
 fn default_startup_netburst_keep() -> i64 { 50 }
+
+fn deserialize_scopes<'de, D>(deserializer: D) -> Result<Scope, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let scopes = <Vec<String>>::deserialize(deserializer)?;
+
+    scopes.join(" ").parse().map_err(de::Error::custom)
+}
+
+fn deserialize_providers<'de, D>(deserializer: D) -> Result<HashSet<IdpConfig>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut result = HashSet::new();
+    let dict = Dict::deserialize(deserializer)
+        .map(Dict::into_iter)
+        .map_err(de::Error::custom)?;
+    warn!(?dict);
+
+    for (name, value) in dict {
+        let tag = value.tag();
+
+        let Some(dict) = value.into_dict() else {
+            return Err(de::Error::custom(Error::bad_config(
+                "Invalid SSO configuration. ",
+            )));
+        };
+
+        let id = String::from("id");
+        let name = name.parse().map_err(de::Error::custom)?;
+
+        let dict = Some((id, name)).into_iter().chain(dict).collect();
+
+        result.insert(
+            Value::Dict(tag, dict)
+                .deserialize()
+                .map_err(de::Error::custom)?,
+        );
+    }
+
+    Ok(result)
+}

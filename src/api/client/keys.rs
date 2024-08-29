@@ -106,6 +106,12 @@ pub(crate) async fn upload_signing_keys_route(
 	let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 	let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
+	let master_key = services()
+		.users
+		.get_master_key(Some(sender_user), sender_user, &|other| {
+			sender_user == other
+		})?;
+
 	// UIAA
 	let mut uiaainfo = UiaaInfo {
 		flows: vec![AuthFlow {
@@ -117,7 +123,15 @@ pub(crate) async fn upload_signing_keys_route(
 		auth_error: None,
 	};
 
-	if let Some(auth) = &body.auth {
+    if let (Some(master_key), None) = (&body.master_key, master_key) {
+        services().users.add_cross_signing_keys(
+            sender_user,
+            master_key,
+            &body.self_signing_key,
+            &body.user_signing_key,
+            true,
+        )?;
+    } else if let Some(auth) = &body.auth {
 		let (worked, uiaainfo) = services
 			.uiaa
 			.try_auth(sender_user, sender_device, auth, &uiaainfo)?;
@@ -133,16 +147,6 @@ pub(crate) async fn upload_signing_keys_route(
 		return Err(Error::Uiaa(uiaainfo));
 	} else {
 		return Err(Error::BadRequest(ErrorKind::NotJson, "Not json."));
-	}
-
-	if let Some(master_key) = &body.master_key {
-		services.users.add_cross_signing_keys(
-			sender_user,
-			master_key,
-			&body.self_signing_key,
-			&body.user_signing_key,
-			true, // notify so that other users see the new keys
-		)?;
 	}
 
 	Ok(upload_signing_keys::v3::Response {})

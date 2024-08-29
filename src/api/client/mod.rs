@@ -23,6 +23,7 @@ pub(super) mod room;
 pub(super) mod search;
 pub(super) mod session;
 pub(super) mod space;
+pub(super) mod sso;
 pub(super) mod state;
 pub(super) mod sync;
 pub(super) mod tag;
@@ -62,6 +63,7 @@ pub(super) use room::*;
 pub(super) use search::*;
 pub(super) use session::*;
 pub(super) use space::*;
+pub(super) use sso::*;
 pub(super) use state::*;
 pub(super) use sync::*;
 pub(super) use tag::*;
@@ -82,3 +84,7 @@ const TOKEN_LENGTH: usize = 32;
 
 /// generated user session ID length
 const SESSION_ID_LENGTH: usize = service::uiaa::SESSION_ID_LENGTH;
+
+
+const AUTH_SESSION_EXPIRATION_SECS: u64 = 60 * 5;
+const LOGIN_TOKEN_EXPIRATION_SECS: u64 = 15;

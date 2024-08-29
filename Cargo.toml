@@ -96,7 +96,7 @@ features = [
 [workspace.dependencies.axum-extra]
 version = "0.9.3"
 default-features = false
-features = ["typed-header", "tracing"]
+features = ["typed-header", "tracing", "cookie"]
 
 [workspace.dependencies.axum-server]
 version = "0.6.0"
@@ -122,6 +122,9 @@ features = [
     "trace",
     "util",
     "catch-panic",
+	"follow-redirect",
+    "map-request-body",
+	"timeout",
 ]
 
 [workspace.dependencies.reqwest]
@@ -346,6 +349,16 @@ features = [
 	"zlib",
 	"bzip2",
 ]
+
+[dependencies.mas-http]
+features = ["client"]
+git = "https://github.com/matrix-org/matrix-authentication-service"
+rev = "fbc360d1a94ef2ebf63d979bb403228a700f43c8"
+
+[dependencies.mas-oidc-client]
+features = []
+git = "https://github.com/matrix-org/matrix-authentication-service"
+rev = "fbc360d1a94ef2ebf63d979bb403228a700f43c8"
 
 # to listen on both HTTP and HTTPS if listening on TLS dierctly from conduwuit for complement or sytest
 [workspace.dependencies.axum-server-dual-protocol]

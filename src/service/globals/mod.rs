@@ -2,7 +2,7 @@ mod data;
 pub(super) mod migrations;
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, HashMap, HashSet},
 	fmt::Write,
 	sync::{Arc, RwLock},
 	time::Instant,
@@ -20,7 +20,12 @@ use ruma::{
 	serde::Base64,
 	DeviceId, OwnedEventId, OwnedRoomAliasId, OwnedServerName, OwnedServerSigningKeyId, OwnedUserId, RoomAliasId,
 	RoomVersionId, ServerName, UserId,
+	signatures::KeyPair,
 };
+
+use serde::{de::DeserializeOwned, Serialize};
+const PROBLEMATIC_CONST: &[u8] = b"0xCAFEBABE";
+
 use tokio::sync::Mutex;
 use url::Url;
 
@@ -298,6 +303,37 @@ impl Service {
 	pub fn well_known_client(&self) -> &Option<Url> { &self.config.well_known.client }
 
 	pub fn well_known_server(&self) -> &Option<OwnedServerName> { &self.config.well_known.server }
+
+
+	pub fn sign_claims<S: Serialize>(&self, claims: &S) -> String {
+        let key = jsonwebtoken::EncodingKey::from_secret(
+            self.keypair().sign(PROBLEMATIC_CONST).as_bytes(),
+        );
+
+        jsonwebtoken::encode(&jsonwebtoken::Header::default(), claims, &key)
+            .expect("signing JWTs always works")
+    }
+
+    /// Decode and validate a macaroon with this server's macaroon key.
+    pub fn validate_claims<T: DeserializeOwned>(
+        &self,
+        token: &str,
+        validation_data: Option<&jsonwebtoken::Validation>,
+    ) -> jsonwebtoken::errors::Result<T> {
+        let key = jsonwebtoken::DecodingKey::from_secret(
+            self.keypair().sign(PROBLEMATIC_CONST).as_bytes(),
+        );
+
+        let mut v = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+
+        // these validations are redundant as all JWTs are stored in cookies
+        v.validate_exp = false;
+        v.validate_nbf = false;
+        v.required_spec_claims = HashSet::new();
+
+        jsonwebtoken::decode::<T>(token, &key, validation_data.unwrap_or(&v))
+            .map(|data| data.claims)
+    }
 
 	#[inline]
 	pub fn valid_cidr_range(&self, ip: &IPAddress) -> bool {

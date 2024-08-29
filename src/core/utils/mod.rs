@@ -27,6 +27,7 @@ pub use rand::string as random_string;
 pub use string::{str_from_bytes, string_from_bytes};
 pub use sys::available_parallelism;
 pub use time::now_millis as millis_since_unix_epoch;
+pub use axum_extra::extract::cookie::{Cookie, SameSite};
 
 #[inline]
 pub fn clamp<T: Ord>(val: T, min: T, max: T) -> T { cmp::min(cmp::max(val, min), max) }
@@ -70,4 +71,27 @@ pub fn common_elements(
 			false
 		})
 	}))
+}
+
+pub fn build_cookie<'c>(
+    name: &'c str,
+    value: &'c str,
+    path: &'c str,
+    max_age: Option<u64>,
+) -> Cookie<'c> {
+    let mut cookie = Cookie::new(name, value);
+
+    cookie.set_path(path);
+    cookie.set_secure(true);
+    cookie.set_http_only(true);
+    cookie.set_same_site(SameSite::None);
+    cookie.set_max_age(
+        max_age
+            .map(Duration::from_secs)
+            .map(TryInto::try_into)
+            .transpose()
+            .expect("time overflow"),
+    );
+
+    cookie
 }

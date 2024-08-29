@@ -36,3 +36,21 @@ For example, if the setting you are changing is `max_request_size`, then the env
 To modify config options not in the `[global]` context such as `[global.well_known]`, use the `__` suffix split: `CONDUWUIT_WELL_KNOWN__SERVER`
 
 Conduit's environment variables are supported for backwards compatibility (e.g. `CONDUIT_SERVER_NAME`).
+
+
+### SSO (Single Sign-On)
+
+Authentication through SSO instead of a password can be enabled by configuring OIDC (OpenID Connect) identity providers.
+Identity providers using OAuth such as Github are not supported yet.
+
+> **Note:** The `*` symbol indicates that the field is required, and the values in **parentheses** are the possible values
+
+| Field | Type | Description | Default |
+| --- | --- | --- | --- |
+| `issuer`* | `Url` | The issuer URL. | N/A |
+| `name` | `string` | The name displayed on fallback pages. | `issuer` |
+| `icon` | `Url` OR `MxcUri` | The icon displayed on fallback pages. | N/A |
+| `scopes` | `array` | The scopes used to obtain extra claims which can be used for templates. | `["openid"]` |
+| `client_id`* | `string` | The provider-supplied, unique ID for the client. | N/A |
+| `client_secret`* | `string` | The provider-supplied, unique ID for the client. | N/A |
+| `authentication_method`* | `"basic" OR "post"` | The method used for client authentication. | N/A |

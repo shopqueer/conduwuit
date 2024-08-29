@@ -22,7 +22,8 @@ use serde::Deserialize;
 use tracing::{debug, info, warn};
 
 use super::{DEVICE_ID_LENGTH, TOKEN_LENGTH};
-use crate::{utils, utils::hash, Error, Result, Ruma};
+use crate::{service::sso::LoginToken, utils, utils::hash, Error, Result, Ruma};
+use jsonwebtoken::{Algorithm, Validation};
 
 #[derive(Debug, Deserialize)]
 struct Claims {
@@ -38,10 +39,19 @@ struct Claims {
 pub(crate) async fn get_login_types_route(
 	InsecureClientIp(client): InsecureClientIp, _body: Ruma<get_login_types::v3::Request>,
 ) -> Result<get_login_types::v3::Response> {
-	Ok(get_login_types::v3::Response::new(vec![
+    let identity_providers: Vec<_> = services().sso.login_type().collect();
+    let mut flows = vec![
 		get_login_types::v3::LoginType::Password(PasswordLoginType::default()),
 		get_login_types::v3::LoginType::ApplicationService(ApplicationServiceLoginType::default()),
-	]))
+	];
+
+	if !identity_providers.is_empty() {
+        flows.push(get_login_types::v3::LoginType::Sso(
+            get_login_types::v3::SsoLoginType { identity_providers },
+        ));
+    }
+
+    Ok(get_login_types::v3::Response::new(flows))
 }
 
 /// # `POST /_matrix/client/v3/login`
@@ -102,25 +112,65 @@ pub(crate) async fn login_route(
 			token,
 		}) => {
 			debug!("Got token login type");
-			if let Some(jwt_decoding_key) = services.globals.jwt_decoding_key() {
-				let token =
-					jsonwebtoken::decode::<Claims>(token, jwt_decoding_key, &jsonwebtoken::Validation::default())
-						.map_err(|e| {
-							warn!("Failed to parse JWT token from user logging in: {e}");
-							Error::BadRequest(ErrorKind::InvalidUsername, "Token is invalid.")
-						})?;
+			match (
+                services().globals.jwt_decoding_key(),
+                services().globals.config.idps.is_empty(),
+            ) {
+                (_, false) => {
+                    let mut v = Validation::new(Algorithm::HS256);
 
-				let username = token.claims.sub.to_lowercase();
+                    v.set_required_spec_claims(&["sub", "exp", "aud", "iss"]);
+                    v.validate_aud = false;
+                    v.validate_nbf = false;
 
-				UserId::parse_with_server_name(username, services.globals.server_name()).map_err(|e| {
-					warn!("Failed to parse username from user logging in: {e}");
-					Error::BadRequest(ErrorKind::InvalidUsername, "Username is invalid.")
-				})?
-			} else {
-				return Err(Error::BadRequest(
-					ErrorKind::Unknown,
-					"Token login is not supported (server has no jwt decoding key).",
-				));
+                    services()
+                        .globals
+                        .validate_claims::<LoginToken>(token, Some(&v))
+                        .map(LoginToken::audience)
+                        .map_err(|e| {
+                            tracing::warn!("Invalid token: {}", e);
+
+                            Error::BadRequest(ErrorKind::InvalidParam, "Invalid token.")
+                        })?
+                }
+                (Some(jwt_decoding_key), _) => {
+                    let token = jsonwebtoken::decode::<Claims>(
+                        token,
+                        jwt_decoding_key,
+                        &Validation::default(),
+                    )
+                    .map_err(|_| {
+                        Error::BadRequest(ErrorKind::InvalidUsername, "Token is invalid.")
+                    })?;
+                    let username = token.claims.sub.to_lowercase();
+                    let user_id =
+                        UserId::parse_with_server_name(username, services().globals.server_name())
+                            .map_err(|_| {
+                                Error::BadRequest(
+                                    ErrorKind::InvalidUsername,
+                                    "Username is invalid.",
+                                )
+                            })?;
+
+                    if services().appservice.is_exclusive_user_id(&user_id).await {
+                        return Err(Error::BadRequest(
+                            ErrorKind::Exclusive,
+                            "User id reserved by appservice.",
+                        ));
+                    }
+
+                    user_id
+                }
+                (None, _) => {
+                    return Err(Error::BadRequest(
+                        ErrorKind::Exclusive,
+                        "User id reserved by appservice.",
+                        ErrorKind::Unknown,
+                        "Token login is not supported (server has no jwt decoding key).",
+                    ));
+                }
+
+                user_id
 			}
 		},
 		#[allow(deprecated)]

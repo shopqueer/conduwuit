@@ -171,6 +171,10 @@ impl Data {
 		}
 	}
 
+	fn set_placeholder_password(&self, user_id: &UserId) -> Result<()> {
+        self.userid_password.insert(user_id.as_bytes(), b"0xff")
+    }
+
 	/// Returns the displayname of a user on this homeserver.
 	pub(super) fn displayname(&self, user_id: &UserId) -> Result<Option<String>> {
 		self.userid_displayname
