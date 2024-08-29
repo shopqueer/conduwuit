@@ -108,3 +108,20 @@ pub(super) fn ruma_error_message(error: &ruma::api::client::error::Error) -> Str
 pub(super) fn ruma_error_kind(e: &ruma::api::client::error::Error) -> &ErrorKind {
 	e.error_kind().unwrap_or(&ErrorKind::Unknown)
 }
+
+
+impl From<mas_oidc_client::types::errors::ClientError> for Error {
+    fn from(e: mas_oidc_client::types::errors::ClientError) -> Self {
+        error!(
+            "Failed to complete authorization callback: {} {}",
+            e.error,
+            e.error_description.as_deref().unwrap_or_default()
+        );
+
+        // TODO: error conversion
+        Self::BadRequest(
+            ErrorKind::Unknown,
+            "Failed to complete authorization callback.",
+        )
+    }
+}

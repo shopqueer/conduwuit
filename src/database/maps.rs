@@ -75,6 +75,8 @@ pub const MAPS: &[&str] = &[
 	"statekey_shortstatekey",
 	"threadid_userids",
 	"todeviceid_events",
+	"userid_providersubjectid",
+	"providersubjectid_userid",
 	"tofrom_relation",
 	"token_userdeviceid",
 	"tokenids",

@@ -41,6 +41,7 @@ pub struct Services {
 	pub(crate) service: Arc<Map>,
 	pub server: Arc<Server>,
 	pub db: Arc<Database>,
+	pub sso:Arc<sso::Service>,
 }
 
 impl Services {
@@ -95,6 +96,7 @@ impl Services {
 				user: build!(rooms::user::Service),
 			},
 			sending: build!(sending::Service),
+			sso: build!(sso::Service)
 			server_keys: build!(server_keys::Service),
 			transaction_ids: build!(transaction_ids::Service),
 			uiaa: build!(uiaa::Service),

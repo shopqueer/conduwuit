@@ -507,6 +507,10 @@ impl Service {
 
 	/// Find out which user an OpenID access token belongs to.
 	pub fn find_from_openid_token(&self, token: &str) -> Result<OwnedUserId> { self.db.find_from_openid_token(token) }
+	
+	pub fn set_placeholder_password(&self, user_id: &UserId) -> Result<()> {
+        self.db.set_placeholder_password(user_id)
+    }
 }
 
 /// Ensure that a user only sees signatures from themselves and the target user
