@@ -27,7 +27,7 @@ pub use rand::string as random_string;
 pub use string::{str_from_bytes, string_from_bytes};
 pub use sys::available_parallelism;
 pub use time::now_millis as millis_since_unix_epoch;
-pub use axum_extra::extract::cookie::{Cookie, SameSite};
+use axum_extra::extract::cookie::{Cookie, SameSite};
 
 #[inline]
 pub fn clamp<T: Ord>(val: T, min: T, max: T) -> T { cmp::min(cmp::max(val, min), max) }

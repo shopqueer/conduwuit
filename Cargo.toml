@@ -350,12 +350,12 @@ features = [
 	"bzip2",
 ]
 
-[dependencies.mas-http]
+[workspace.dependencies.mas-http]
 features = ["client"]
 git = "https://github.com/matrix-org/matrix-authentication-service"
 rev = "fbc360d1a94ef2ebf63d979bb403228a700f43c8"
 
-[dependencies.mas-oidc-client]
+[workspace.dependencies.mas-oidc-client]
 features = []
 git = "https://github.com/matrix-org/matrix-authentication-service"
 rev = "fbc360d1a94ef2ebf63d979bb403228a700f43c8"
