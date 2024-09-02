@@ -53,6 +53,7 @@ sha256_media = []
 argon2.workspace = true
 arrayvec.workspace = true
 axum.workspace = true
+axum-extra.workspace = true
 bytes.workspace = true
 cargo_toml.workspace = true
 checked_ops.workspace = true
