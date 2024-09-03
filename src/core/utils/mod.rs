@@ -14,6 +14,7 @@ mod tests;
 pub mod time;
 
 use std::cmp::{self, Ordering};
+use std::time::Duration;
 
 pub use ::ctor::{ctor, dtor};
 pub use bytes::{increment, u64_from_bytes, u64_from_u8, u64_from_u8x8};

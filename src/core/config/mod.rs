@@ -12,7 +12,7 @@ use either::{
 	Either::{Left, Right},
 };
 use figment::providers::{Env, Format, Toml};
-pub use figment::{value::Value as FigmentValue, Figment, Dict};
+pub use figment::{value::Value as FigmentValue, Figment, value::Dict as Dict};
 use itertools::Itertools;
 use regex::RegexSet;
 use ruma::{
@@ -24,6 +24,7 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use mas_oidc_client::types::{client_credentials::ClientCredentials, scope::Scope};
+use tracing::warn;
 
 use url::Url;
 
@@ -1159,7 +1160,7 @@ where
         let dict = Some((id, name)).into_iter().chain(dict).collect();
 
         result.insert(
-            Value::Dict(tag, dict)
+            FigmentValue::Dict(tag, dict)
                 .deserialize()
                 .map_err(de::Error::custom)?,
         );
