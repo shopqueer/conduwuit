@@ -353,7 +353,7 @@ new_user_displayname_suffix = ""
 # The room IDs specified must be rooms that you have joined at least once on the server, and must be public.
 #
 # No default.
-auto_join_rooms = ["!KpUlvQaB1UJcEn2H4H:beta-community.allstora.com", "!Bfo5b9TeyGfT65X76P:beta-community.allstora.com", "!lBA3H1dK1sDJ5b6eNY:beta-community.allstora.com", "!7MTuKCeqsZL2P4oSwl:beta-community.allstora.com", "!7aT9Jl2S2qpYcFQV4d:beta-community.allstora.com", "!wNdaquF0Zefj0XpLU8:beta-community.allstora.com", "!XSIKzxefis3vIkiqsa:beta-community.allstora.com"]
+auto_join_rooms = ["!XJD4PLdFjSyHBvvKIh:beta-community.allstora.com", "!KpUlvQaB1UJcEn2H4H:beta-community.allstora.com", "!Bfo5b9TeyGfT65X76P:beta-community.allstora.com", "!lBA3H1dK1sDJ5b6eNY:beta-community.allstora.com", "!7MTuKCeqsZL2P4oSwl:beta-community.allstora.com", "!7aT9Jl2S2qpYcFQV4d:beta-community.allstora.com", "!wNdaquF0Zefj0XpLU8:beta-community.allstora.com", "!XSIKzxefis3vIkiqsa:beta-community.allstora.com"]
 
 # Retry failed and incomplete messages to remote servers immediately upon startup. This is called bursting.
 # If this is disabled, said messages may not be delivered until more messages are queued for that server.
