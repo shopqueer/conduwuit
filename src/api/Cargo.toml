@@ -50,6 +50,7 @@ hyper.workspace = true
 ipaddress.workspace = true
 jsonwebtoken.workspace = true
 log.workspace = true
+mas-oidc-client.workspace = true
 rand.workspace = true
 reqwest.workspace = true
 ruma.workspace = true
@@ -59,6 +60,7 @@ serde.workspace = true
 sha-1.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+url.workspace = true
 
 [lints]
 workspace = true

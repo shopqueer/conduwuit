@@ -1149,9 +1149,7 @@ where
         let tag = value.tag();
 
         let Some(dict) = value.into_dict() else {
-            return Err(de::Error::custom(Error::bad_config(
-                "Invalid SSO configuration. ",
-            )));
+            return Err(de::Error::custom("Invalid SSO configuration. "));
         };
 
         let id = String::from("id");

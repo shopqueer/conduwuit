@@ -19,6 +19,7 @@ use ruma::{
 	DeviceKeyAlgorithm, OwnedDeviceId, OwnedUserId, UserId,
 };
 use serde_json::json;
+use service::account_data::Service;
 
 use super::SESSION_ID_LENGTH;
 use crate::{service::Services, Ruma};
@@ -100,13 +101,13 @@ pub(crate) async fn claim_keys_route(
 /// Uploads end-to-end key information for the sender user.
 ///
 /// - Requires UIAA to verify password
-pub(crate) async fn upload_signing_keys_route(
+pub(crate) async fn upload_signing_keys_route(all_services: Services,
 	State(services): State<crate::State>, body: Ruma<upload_signing_keys::v3::Request>,
 ) -> Result<upload_signing_keys::v3::Response> {
 	let sender_user = body.sender_user.as_ref().expect("user is authenticated");
 	let sender_device = body.sender_device.as_ref().expect("user is authenticated");
 
-	let master_key = services()
+	let master_key = all_services
 		.users
 		.get_master_key(Some(sender_user), sender_user, &|other| {
 			sender_user == other
@@ -124,7 +125,7 @@ pub(crate) async fn upload_signing_keys_route(
 	};
 
     if let (Some(master_key), None) = (&body.master_key, master_key) {
-        services().users.add_cross_signing_keys(
+        all_services.users.add_cross_signing_keys(
             sender_user,
             master_key,
             &body.self_signing_key,

@@ -26,6 +26,8 @@ pub(crate) struct Args<T> {
 	/// None when not an authenticated local user or no device.
 	pub(crate) sender_device: Option<OwnedDeviceId>,
 
+	pub(crate) sender_servername: Option<OwnedDeviceId>,
+
 	/// Appservice authentication; registration info.
 	/// None when not an appservice.
 	pub(crate) appservice_info: Option<RegistrationInfo>,

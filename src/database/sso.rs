@@ -27,3 +27,4 @@ impl service::sso::Data for KeyValueDatabase {
         })
     }
 }
+

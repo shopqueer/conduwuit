@@ -105,8 +105,6 @@ pub enum Error {
 impl Error {
 	pub fn bad_database(message: &'static str) -> Self { crate::err!(Database(error!("{message}"))) }
     
-	pub fn bad_config(message: &'static str) -> Self { crate::err!(Config(error!("{message}"))) }
-
 	/// Sanitizes public-facing errors that can leak sensitive information.
 	pub fn sanitized_string(&self) -> String {
 		match self {

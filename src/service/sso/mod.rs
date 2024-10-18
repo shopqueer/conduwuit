@@ -5,10 +5,12 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    api::client_server::{LOGIN_TOKEN_EXPIRATION_SECS, TOKEN_LENGTH},
+use conduit_core::{
+    Config,
+    utils,
     config::IdpConfig,
-    utils, Error, Result,
+    Result,
+    Error::Config as ConfigError
 };
 use futures_util::future::{self};
 use http::HeaderValue;
@@ -17,32 +19,37 @@ use mas_oidc_client::{
     requests::{authorization_code::AuthorizationValidationData, discovery},
     types::oidc::VerifiedProviderMetadata,
 };
-use ruma::{api::client::session::get_login_types::v3::IdentityProvider, OwnedUserId, UserId};
+use ruma::{api::client::session::get_login_types::v3::IdentityProvider, OwnedUserId};
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 use tower::BoxError;
 use tower_http::{set_header::SetRequestHeaderLayer, ServiceBuilderExt};
-use tracing::error;
 use url::Url;
-
-use crate::services;
+use tracing::error;
 
 mod data;
-pub use data::Data;
 
 pub const SSO_AUTH_EXPIRATION_SECS: u64 = 60 * 60;
 pub const SSO_TOKEN_EXPIRATION_SECS: u64 = 60 * 2;
 pub const SSO_SESSION_COOKIE: &str = "sso-auth";
 pub const SUBJECT_CLAIM_KEY: &str = "sub";
 
+pub const AUTH_SESSION_EXPIRATION_SECS: u64 = 60 * 5;
+pub const LOGIN_TOKEN_EXPIRATION_SECS: u64 = 15;
+pub const TOKEN_LENGTH: usize = 32;
+
 pub struct Service {
-    db: &'static dyn Data,
-    service: HttpService,
+    config: Config,
+    db: data::Data,
+    http_service: HttpService,
     providers: OnceCell<HashSet<Provider>>,
 }
 
-impl Service {
-    pub fn build(db: &'static dyn Data) -> Result<Arc<Self>> {
+impl crate::Service for Service {
+    fn build(args: crate::Args<'_>) -> Result<Arc<Self>> {
+        let db = data::Data::new(&args);
+		let config = &args.server.config;
+
         let client = tower::ServiceBuilder::new()
             .map_err(BoxError::from)
             .layer(tower_http::timeout::TimeoutLayer::new(
@@ -58,23 +65,31 @@ impl Service {
             .follow_redirects()
             .service(mas_http::make_untraced_client());
 
+        let http_service = HttpService::new(client);
+
+        let providers = OnceCell::new();
         Ok(Arc::new(Self {
             db,
-            service: HttpService::new(client),
-            providers: OnceCell::new(),
+            http_service: http_service,
+            providers: providers,
+            config: config.clone(),
         }))
     }
 
-    pub fn service(&self) -> &HttpService {
-        &self.service
+	fn name(&self) -> &str { crate::service::make_name(std::module_path!()) }
+
+}
+
+impl Service {
+    pub fn http_service(&self) -> &HttpService {
+        &self.http_service
     }
 
     pub async fn start_handler(&self) -> Result<()> {
-        let providers = services().globals.config.idps.iter();
 
         self.providers
             .get_or_try_init(|| async move {
-                future::try_join_all(providers.map(Provider::fetch_metadata))
+                future::try_join_all(self.config.idps.iter().map(|x| Provider::fetch_metadata(&self.http_service, x)))
                     .await
                     .map(Vec::into_iter)
                     .map(HashSet::from_iter)
@@ -99,26 +114,25 @@ impl Service {
     pub fn user_from_subject(&self, provider: &str, subject: &str) -> Result<Option<OwnedUserId>> {
         self.db.user_from_subject(provider, subject)
     }
+
 }
 
 #[derive(Clone, Debug)]
 pub struct Provider {
-    pub config: &'static IdpConfig,
+    pub config: IdpConfig,
     pub metadata: VerifiedProviderMetadata,
 }
-
 impl Provider {
-    pub async fn fetch_metadata(config: &'static IdpConfig) -> Result<Self> {
-        discovery::discover(services().sso.service(), &config.issuer)
+    pub async fn fetch_metadata(service: &HttpService, config: &IdpConfig) -> Result<Self> {
+        discovery::discover(service, &config.issuer)
             .await
-            .map(|metadata| Provider { config, metadata })
+            .map(|metadata| Provider { config: config.clone(), metadata })
             .map_err(|e| {
                 error!(
                     "Failed to fetch identity provider metadata ({}): {}",
                     &config.inner.id, e
                 );
-
-                Error::bad_config("Failed to fetch identity provider metadata.")
+                ConfigError("SSO provider metadata", std::borrow::Cow::Borrowed("Failed to fetch identity provider metadata."))
             })
     }
 }

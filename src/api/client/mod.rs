@@ -84,7 +84,3 @@ const TOKEN_LENGTH: usize = 32;
 
 /// generated user session ID length
 const SESSION_ID_LENGTH: usize = service::uiaa::SESSION_ID_LENGTH;
-
-
-const AUTH_SESSION_EXPIRATION_SECS: u64 = 60 * 5;
-const LOGIN_TOKEN_EXPIRATION_SECS: u64 = 15;

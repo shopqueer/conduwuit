@@ -20,6 +20,7 @@ use ruma::{
 };
 use serde::Deserialize;
 use tracing::{debug, info, warn};
+use service::Services;
 
 use super::{DEVICE_ID_LENGTH, TOKEN_LENGTH};
 use crate::{service::sso::LoginToken, utils, utils::hash, Error, Result, Ruma};
@@ -36,10 +37,10 @@ struct Claims {
 /// Get the supported login types of this server. One of these should be used as
 /// the `type` field when logging in.
 #[tracing::instrument(skip_all, fields(%client), name = "register")]
-pub(crate) async fn get_login_types_route(
+pub(crate) async fn get_login_types_route(services: Services,
 	InsecureClientIp(client): InsecureClientIp, _body: Ruma<get_login_types::v3::Request>,
 ) -> Result<get_login_types::v3::Response> {
-    let identity_providers: Vec<_> = services().sso.login_type().collect();
+    let identity_providers: Vec<_> = services.sso.login_type().collect();
     let mut flows = vec![
 		get_login_types::v3::LoginType::Password(PasswordLoginType::default()),
 		get_login_types::v3::LoginType::ApplicationService(ApplicationServiceLoginType::default()),
@@ -70,6 +71,7 @@ pub(crate) async fn get_login_types_route(
 /// supported login types.
 #[tracing::instrument(skip_all, fields(%client), name = "register")]
 pub(crate) async fn login_route(
+	all_services: Services,
 	State(services): State<crate::State>, InsecureClientIp(client): InsecureClientIp, body: Ruma<login::v3::Request>,
 ) -> Result<login::v3::Response> {
 	// Validate login method
@@ -113,8 +115,8 @@ pub(crate) async fn login_route(
 		}) => {
 			debug!("Got token login type");
 			match (
-                services().globals.jwt_decoding_key(),
-                services().globals.config.idps.is_empty(),
+                all_services.globals.jwt_decoding_key(),
+                all_services.globals.config.idps.is_empty(),
             ) {
                 (_, false) => {
                     let mut v = Validation::new(Algorithm::HS256);
@@ -123,7 +125,7 @@ pub(crate) async fn login_route(
                     v.validate_aud = false;
                     v.validate_nbf = false;
 
-                    services()
+                    all_services
                         .globals
                         .validate_claims::<LoginToken>(token, Some(&v))
                         .map(LoginToken::audience)
@@ -144,7 +146,7 @@ pub(crate) async fn login_route(
                     })?;
                     let username = token.claims.sub.to_lowercase();
                     let user_id =
-                        UserId::parse_with_server_name(username, services().globals.server_name())
+                        UserId::parse_with_server_name(username, all_services.globals.server_name())
                             .map_err(|_| {
                                 Error::BadRequest(
                                     ErrorKind::InvalidUsername,
@@ -152,7 +154,7 @@ pub(crate) async fn login_route(
                                 )
                             })?;
 
-                    if services().appservice.is_exclusive_user_id(&user_id).await {
+                    if all_services.appservice.is_exclusive_user_id(&user_id).await {
                         return Err(Error::BadRequest(
                             ErrorKind::Exclusive,
                             "User id reserved by appservice.",
@@ -163,14 +165,10 @@ pub(crate) async fn login_route(
                 }
                 (None, _) => {
                     return Err(Error::BadRequest(
-                        ErrorKind::Exclusive,
-                        "User id reserved by appservice.",
                         ErrorKind::Unknown,
                         "Token login is not supported (server has no jwt decoding key).",
                     ));
                 }
-
-                user_id
 			}
 		},
 		#[allow(deprecated)]

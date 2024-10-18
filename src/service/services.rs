@@ -14,7 +14,7 @@ use crate::{
 	manager::Manager,
 	media, presence, pusher, resolver, rooms, sending, server_keys, service,
 	service::{Args, Map, Service},
-	transaction_ids, uiaa, updates, users,
+	sso, transaction_ids, uiaa, updates, users,
 };
 
 pub struct Services {
@@ -41,7 +41,7 @@ pub struct Services {
 	pub(crate) service: Arc<Map>,
 	pub server: Arc<Server>,
 	pub db: Arc<Database>,
-	pub sso:Arc<sso::Service>,
+	pub sso: Arc<sso::Service>,
 }
 
 impl Services {
@@ -96,7 +96,7 @@ impl Services {
 				user: build!(rooms::user::Service),
 			},
 			sending: build!(sending::Service),
-			sso: build!(sso::Service)
+			sso: build!(sso::Service),
 			server_keys: build!(server_keys::Service),
 			transaction_ids: build!(transaction_ids::Service),
 			uiaa: build!(uiaa::Service),

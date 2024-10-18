@@ -1,12 +1,16 @@
-use std::{borrow::Borrow, collections::HashMap, iter::Iterator, time::SystemTime};
+use std::{borrow::Borrow, collections::HashMap, iter::Iterator, sync::Arc, time::SystemTime};
+
+use axum::extract::State;
+use axum_client_ip::InsecureClientIp;
 
 use crate::{
-    config::IdpConfig,
+    client,
     service::sso::{
         LoginToken, ValidationData, SSO_AUTH_EXPIRATION_SECS, SSO_SESSION_COOKIE, SUBJECT_CLAIM_KEY,
     },
     services, utils, Error, Result, Ruma,
 };
+use conduit_core::{config::IdpConfig, Err};
 use futures_util::TryFutureExt;
 use mas_oidc_client::{
     requests::{
@@ -31,6 +35,7 @@ use ruma::{
     push, UserId,
 };
 use serde_json::Value;
+use service::Services;
 use tracing::{error, info, warn};
 use url::Url;
 
@@ -49,6 +54,7 @@ pub async fn get_sso_redirect_route(
         json_body,
         ..
     }: Ruma<sso_login::v3::Request>,
+    services: Services
 ) -> Result<sso_login::v3::Response> {
     let sso_login_with_provider::v3::Response { location, cookie } =
         get_sso_redirect_with_provider_route(
@@ -62,8 +68,10 @@ pub async fn get_sso_redirect_route(
                 sender_servername,
                 json_body,
                 appservice_info: None,
+                origin: None,
             }
             .into(),
+            services
         )
         .await?;
 
@@ -75,8 +83,9 @@ pub async fn get_sso_redirect_route(
 /// Redirects the user to the SSO interface.
 pub async fn get_sso_redirect_with_provider_route(
     body: Ruma<sso_login_with_provider::v3::Request>,
+    services: Services
 ) -> Result<sso_login_with_provider::v3::Response> {
-    let idp_ids: Vec<&str> = services()
+    let idp_ids: Vec<&str> = services
         .globals
         .config
         .idps
@@ -91,8 +100,8 @@ pub async fn get_sso_redirect_with_provider_route(
                 "Single Sign-On is disabled.",
             ));
         }
-        [idp_id] => services().sso.get(idp_id).expect("we know it exists"),
-        [_, ..] => services().sso.get(&body.idp_id).ok_or_else(|| {
+        [idp_id] => services.sso.get(idp_id).expect("we know it exists"),
+        [_, ..] => services.sso.get(&body.idp_id).ok_or_else(|| {
             Error::BadRequest(ErrorKind::InvalidParam, "Unknown identity provider.")
         })?,
     };
@@ -102,11 +111,12 @@ pub async fn get_sso_redirect_with_provider_route(
         .parse::<Url>()
         .map_err(|_| Error::BadRequest(ErrorKind::InvalidParam, "Invalid redirect_url."))?;
 
-    let mut callback = services()
+    let mut callback = services
         .globals
         .well_known_client()
-        .parse::<Url>()
-        .map_err(|_| Error::bad_config("Invalid well_known_client url."))?;
+        .clone()
+        .ok_or(Error::Config("Missing well_known_client url", std::borrow::Cow::Borrowed("Bad.")))?;
+
     callback.set_path(CALLBACK_PATH);
 
     let (auth_url, validation_data) = authorization_code::build_authorization_url(
@@ -120,7 +130,7 @@ pub async fn get_sso_redirect_with_provider_route(
     )
     .map_err(|_| Error::BadRequest(ErrorKind::Unknown, "Failed to build authorization_url."))?;
 
-    let signed = services().globals.sign_claims(&ValidationData::new(
+    let signed = services.globals.sign_claims(&ValidationData::new(
         Borrow::<str>::borrow(provider).to_owned(),
         redirect_url.to_string(),
         validation_data,
@@ -147,6 +157,7 @@ pub async fn get_sso_redirect_with_provider_route(
 /// If this is the first login, register the user, possibly interactively through a fallback page.
 pub async fn handle_callback_route(
     body: Ruma<sso_callback::Request>,
+    services: Services
 ) -> Result<sso_login_with_provider::v3::Response> {
     let sso_callback::Request {
         response:
@@ -164,14 +175,14 @@ pub async fn handle_callback_route(
         provider,
         redirect_url,
         inner: validation_data,
-    } = services()
+    } = services
         .globals
         .validate_claims(&cookie, None)
         .map_err(|_| {
             Error::BadRequest(ErrorKind::InvalidParam, "Invalid value for session cookie.")
         })?;
 
-    let provider = services().sso.get(&provider).ok_or_else(|| {
+    let provider = services.sso.get(&provider).ok_or_else(|| {
         Error::BadRequest(
             ErrorKind::InvalidParam,
             "Unknown provider for session cookie.",
@@ -196,9 +207,9 @@ pub async fn handle_callback_route(
         },
         _ => todo!(),
     };
-    let ref jwks = jose::fetch_jwks(services().sso.service(), provider.metadata.jwks_uri())
+    let ref jwks = jose::fetch_jwks(services.sso.http_service(), provider.metadata.jwks_uri())
         .await
-        .map_err(|_| Error::bad_config("Failed to fetch signing keys for token endpoint."))?;
+        .map_err(|err| Error::Config("Failed to fetch signing keys for token endpoint.", std::borrow::Cow::Borrowed("{err}")))?;
     let idt_verification_data = Some(JwtVerificationData {
         jwks,
         issuer: &provider.config.issuer,
@@ -217,7 +228,7 @@ pub async fn handle_callback_route(
         },
         Some(id_token),
     ) = authorization_code::access_token_with_authorization_code(
-        services().sso.service(),
+        services.sso.http_service(),
         credentials,
         provider.metadata.token_endpoint(),
         code.unwrap_or_default(),
@@ -227,7 +238,7 @@ pub async fn handle_callback_route(
         &mut StdRng::from_entropy(),
     )
     .await
-    .map_err(|_| Error::bad_config("Failed to fetch access token."))?
+    .map_err(|err| Error::Config("Failed to fetch access token.", std::borrow::Cow::Borrowed("{err}")))?
     else {
         unreachable!("ID token should never be empty")
     };
@@ -235,7 +246,7 @@ pub async fn handle_callback_route(
     let mut userinfo = HashMap::default();
     if let Some(endpoint) = provider.metadata.userinfo_endpoint.as_ref() {
         userinfo = userinfo::fetch_userinfo(
-            services().sso.service(),
+            services.sso.http_service(),
             endpoint,
             &access_token,
             None,
@@ -245,7 +256,7 @@ pub async fn handle_callback_route(
         .map_err(|e| {
             tracing::error!("Failed to fetch claims for userinfo endpoint: {:?}", e);
 
-            Error::bad_config("Failed to fetch claims for userinfo endpoint.")
+            Error::Config("Failed to fetch access token.", std::borrow::Cow::Borrowed("{err}"))
         })?;
     }
 
@@ -271,7 +282,7 @@ pub async fn handle_callback_route(
         }
     };
 
-    let user_id = match services()
+    let user_id = match services
         .sso
         .user_from_subject(Borrow::<str>::borrow(provider), &subject)?
     {
@@ -280,11 +291,11 @@ pub async fn handle_callback_route(
             let mut localpart = subject.clone();
 
             let user_id = loop {
-                match UserId::parse_with_server_name(&*localpart, services().globals.server_name())
+                match UserId::parse_with_server_name(&*localpart, services.globals.server_name())
                     .map(|user_id| {
                         (
                             user_id.clone(),
-                            services().users.exists(&user_id).unwrap_or(true),
+                            services.users.exists(&user_id).unwrap_or(true),
                         )
                     }) {
                     Ok((user_id, false)) => break user_id,
@@ -296,7 +307,7 @@ pub async fn handle_callback_route(
                 }
             };
 
-            services().users.set_placeholder_password(&user_id)?;
+            services.users.set_placeholder_password(&user_id)?;
             let displayname = id_token
                 .get("preferred_username")
                 .or(id_token.get("nickname"));
@@ -307,37 +318,35 @@ pub async fn handle_callback_route(
                 .unwrap_or(user_id.localpart())
                 .to_owned();
 
-            // If enabled append lightning bolt to display name (default true)
-            if services().globals.enable_lightning_bolt() {
-                displayname.push_str(" ⚡️");
-            }
-
-            services()
+            services
                 .users
-                .set_displayname(&user_id, Some(displayname.clone()))?;
+                .set_displayname(&user_id, Some(displayname.clone())).await?;
 
             if let Some(Value::String(url)) = userinfo.get("picture").or(id_token.get("picture")) {
-                let req = services()
-                    .globals
-                    .default_client()
+                let req = services
+                    .client
+                    .default
+                    .clone()
                     .get(url)
                     .send()
                     .and_then(reqwest::Response::bytes);
 
                 if let Ok(file) = req.await {
-                    let _ = crate::api::client_server::create_content_route(Ruma {
+                    let _ = client::create_content_route(Arc::clone(services), Ruma {
                         body: create_content::v3::Request::new(file.to_vec()),
                         sender_user: None,
                         sender_device: None,
                         sender_servername: None,
                         json_body: None,
                         appservice_info: None,
-                    })
+                        origin: None,
+                    },
+                    InsecureClientIp())
                     .await
                     .and_then(|res| {
                         tracing::info!("successfully imported avatar for {}", &user_id);
 
-                        services()
+                        services
                             .users
                             .set_avatar_url(&user_id, Some(res.content_uri))
                     });
@@ -345,7 +354,7 @@ pub async fn handle_callback_route(
             }
 
             // Initial account data
-            services().account_data.update(
+            services.account_data.update(
                 None,
                 &user_id,
                 GlobalAccountDataEventType::PushRules.to_string().into(),
@@ -358,20 +367,20 @@ pub async fn handle_callback_route(
             )?;
 
             info!("New user {} registered on this server.", user_id);
-            services()
+            services
                 .admin
                 .send_message(RoomMessageEventContent::notice_plain(format!(
                     "New user {user_id} registered on this server."
                 )));
 
-            if let Some(admin_room) = services().admin.get_admin_room()? {
-                if services()
+            if let Some(admin_room) = services.admin.get_admin_room()? {
+                if services
                     .rooms
                     .state_cache
                     .room_joined_count(&admin_room)?
                     == Some(1)
                 {
-                    services()
+                    services
                         .admin
                         .make_user_admin(&user_id, displayname.to_owned())
                         .await?;
@@ -384,7 +393,7 @@ pub async fn handle_callback_route(
         }
     };
 
-    let signed = services().globals.sign_claims(&LoginToken::new(
+    let signed = services.globals.sign_claims(&LoginToken::new(
         Borrow::<str>::borrow(provider).to_owned(),
         user_id,
     ));

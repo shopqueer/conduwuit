@@ -30,7 +30,7 @@
       mkScope = pkgs: pkgs.lib.makeScope pkgs.newScope (self: {
         inherit pkgs;
         book = self.callPackage ./nix/pkgs/book {};
-        complement = self.callPackage ./nix/pkgs/complement {};
+        complement = self.callPackage ./nix/pkgs/compqlement {};
         craneLib = ((inputs.crane.mkLib pkgs).overrideToolchain toolchain);
         inherit inputs;
         main = self.callPackage ./nix/pkgs/main {};

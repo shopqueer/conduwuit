@@ -171,7 +171,7 @@ impl Data {
 		}
 	}
 
-	fn set_placeholder_password(&self, user_id: &UserId) -> Result<()> {
+	pub(super) fn set_placeholder_password(&self, user_id: &UserId) -> Result<()> {
         self.userid_password.insert(user_id.as_bytes(), b"0xff")
     }
 
