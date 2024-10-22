@@ -71,6 +71,7 @@ ipaddress.workspace = true
 itertools.workspace = true
 libloading.workspace = true
 log.workspace = true
+mas-oidc-client.workspace = true
 rand.workspace = true
 regex.workspace = true
 reqwest.workspace = true

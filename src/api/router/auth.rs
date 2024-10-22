@@ -29,6 +29,7 @@ pub(super) struct Auth {
 	pub(super) origin: Option<OwnedServerName>,
 	pub(super) sender_user: Option<OwnedUserId>,
 	pub(super) sender_device: Option<OwnedDeviceId>,
+	pub(super) sender_servername: Option<OwnedDeviceId>,
 	pub(super) appservice_info: Option<RegistrationInfo>,
 }
 
@@ -87,6 +88,7 @@ pub(super) async fn auth(
 					origin: None,
 					sender_user: None,
 					sender_device: None,
+					sender_servername: None,
 					appservice_info: None,
 				})
 			} else {

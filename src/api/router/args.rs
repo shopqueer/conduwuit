@@ -52,6 +52,7 @@ where
 			body: make_body::<T>(services, &mut request, &mut json_body, &auth)?,
 			origin: auth.origin,
 			sender_user: auth.sender_user,
+			sender_servername: auth.sender_servername,
 			sender_device: auth.sender_device,
 			appservice_info: auth.appservice_info,
 			json_body,

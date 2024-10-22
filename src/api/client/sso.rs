@@ -54,7 +54,7 @@ pub async fn get_sso_redirect_route(
         json_body,
         ..
     }: Ruma<sso_login::v3::Request>,
-    services: Services
+    services: &Arc<Services>
 ) -> Result<sso_login::v3::Response> {
     let sso_login_with_provider::v3::Response { location, cookie } =
         get_sso_redirect_with_provider_route(
@@ -83,7 +83,7 @@ pub async fn get_sso_redirect_route(
 /// Redirects the user to the SSO interface.
 pub async fn get_sso_redirect_with_provider_route(
     body: Ruma<sso_login_with_provider::v3::Request>,
-    services: Services
+    services: &Arc<Services>
 ) -> Result<sso_login_with_provider::v3::Response> {
     let idp_ids: Vec<&str> = services
         .globals
@@ -157,7 +157,9 @@ pub async fn get_sso_redirect_with_provider_route(
 /// If this is the first login, register the user, possibly interactively through a fallback page.
 pub async fn handle_callback_route(
     body: Ruma<sso_callback::Request>,
-    services: Services
+    services: &Arc<Services>,
+    State(services_state): State<crate::State>,
+    InsecureClientIp(client): InsecureClientIp
 ) -> Result<sso_login_with_provider::v3::Response> {
     let sso_callback::Request {
         response:
@@ -332,7 +334,7 @@ pub async fn handle_callback_route(
                     .and_then(reqwest::Response::bytes);
 
                 if let Ok(file) = req.await {
-                    let _ = client::create_content_route(Arc::clone(services), Ruma {
+                    let val = client::create_content_route(State(services_state), InsecureClientIp(client), Ruma {
                         body: create_content::v3::Request::new(file.to_vec()),
                         sender_user: None,
                         sender_device: None,
@@ -341,15 +343,19 @@ pub async fn handle_callback_route(
                         appservice_info: None,
                         origin: None,
                     },
-                    InsecureClientIp())
-                    .await
-                    .and_then(|res| {
-                        tracing::info!("successfully imported avatar for {}", &user_id);
+                    )
+                    .await;
+                    let _ = match val {
+                        Ok(res) => {
+                            tracing::info!("successfully imported avatar for {}", &user_id);
 
-                        services
-                            .users
-                            .set_avatar_url(&user_id, Some(res.content_uri))
-                    });
+                            services
+                                .users
+                                .set_avatar_url(&user_id, Some(res.content_uri))
+                                .await
+                        }, 
+                        Err(err) => Err(err)
+                    };
                 }
             }
 
